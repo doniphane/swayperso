@@ -1,7 +1,15 @@
 #!/bin/bash
 
-# Script de personnalisation Sway + Waybar - VERSION COMPLÈTE
-# Toutes les fonctionnalités: icônes, wifi, son, aide, changement langue, etc.
+# ============================================================================
+# SCRIPT COMPLET D'INSTALLATION ET CONFIGURATION SWAY
+# ============================================================================
+# Combine:
+#   - Installation de Sway et dépendances
+#   - Configuration Waybar complète (CPU, RAM, IP, WiFi, Son, etc.)
+#   - Configuration Rofi
+#   - Correction des lags navigateur
+#   - Tous les raccourcis et personnalisations
+# ============================================================================
 
 set -e
 
@@ -10,44 +18,224 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 msg() { echo -e "${CYAN}>>> $*${NC}"; }
 success() { echo -e "${GREEN}✓ $*${NC}"; }
 warn() { echo -e "${YELLOW}⚠ $*${NC}"; }
 error() { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
+section() { echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"; echo -e "${BLUE}║ $*${NC}"; echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n"; }
 
 # Vérifier qu'on n'est pas root
 [ "$EUID" -eq 0 ] && error "Ne pas exécuter ce script en root!"
 
 # Chemins
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.config/sway"
 WAYBAR_DIR="$CONFIG_DIR/waybar"
 ROFI_DIR="$CONFIG_DIR/rofi"
 SCRIPTS_DIR="$CONFIG_DIR/scripts"
+TEMP_DIR="/tmp/sway_install_$$"
+LOG_FILE="$HOME/sway-complete-install.log"
 
-# Banner
+# Logging
+exec > >(tee -a "$LOG_FILE") 2>&1
+trap "rm -rf $TEMP_DIR" EXIT
+
+# Banner principal
 clear
-echo -e "${CYAN}"
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║     Configuration Sway + Waybar ULTRA COMPLÈTE            ║"
-echo "║     Avec icônes, wifi, son, aide, changement langue       ║"
-echo "╚════════════════════════════════════════════════════════════╝"
-echo -e "${NC}\n"
+echo -e "${MAGENTA}"
+cat << 'EOF'
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║     SSSSS   W     W    AAA    Y     Y                           ║
+║    S        W     W   A   A    Y   Y                            ║
+║     SSSS    W  W  W  AAAAAAA    Y Y                             ║
+║         S   W W W W  A     A     Y                              ║
+║    SSSSS     W   W   A     A     Y                              ║
+║                                                                  ║
+║           INSTALLATION ET CONFIGURATION COMPLÈTE                ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+EOF
+echo -e "${NC}"
 
-# Créer les répertoires
+echo -e "${CYAN}Ce script va installer et configurer:${NC}"
+echo "  • Sway (gestionnaire de fenêtres Wayland)"
+echo "  • Waybar (barre avec CPU, RAM, IP, WiFi, Son, Batterie, Langue)"
+echo "  • Rofi (lanceur d'applications)"
+echo "  • Tous les drivers graphiques nécessaires"
+echo "  • Correction des lags navigateur"
+echo "  • Configuration résolution 1920x1080"
+echo "  • Aide raccourcis intégrée (Super+1)"
+echo
+read -p "Continuer? (o/n) " -n 1 -r
+echo
+[[ ! $REPLY =~ ^[OoYy]$ ]] && exit 0
+
+# ============================================================================
+# PARTIE 1: INSTALLATION DES PAQUETS
+# ============================================================================
+section "PARTIE 1/4: Installation des paquets"
+
+msg "Mise à jour du système..."
+sudo apt-get update && sudo apt-get upgrade -y
+success "Système mis à jour"
+
+# Paquets Sway de base
+PACKAGES_CORE=(
+    sway swayidle swaylock swaybg waybar
+    xwayland build-essential
+)
+
+# Composants Sway
+PACKAGES_SWAY=(
+    wofi wmenu foot rofi sway-notification-center
+    grim slurp wl-clipboard cliphist
+    brightnessctl playerctl
+    wlr-randr mako
+    xdg-desktop-portal-wlr swappy wtype
+)
+
+# Interface utilisateur
+PACKAGES_UI=(
+    thunar thunar-archive-plugin thunar-volman
+    pavucontrol network-manager-gnome
+    gvfs-backends dialog mtools smbclient cifs-utils unzip
+)
+
+# Audio et système
+PACKAGES_AUDIO=(
+    pipewire pipewire-pulse wireplumber
+    pulsemixer pamixer pulseaudio-utils
+)
+
+PACKAGES_UTILITIES=(
+    avahi-daemon acpi acpid
+    fd-find xdg-user-dirs-gtk
+    eog
+    gawk jq
+    libnotify-bin libnotify-dev
+)
+
+# Build tools
+PACKAGES_BUILD=(
+    cmake meson ninja-build curl pkg-config wget
+)
+
+# Fonts
+PACKAGES_FONTS=(
+    fonts-recommended fonts-font-awesome fonts-noto-color-emoji
+    fonts-liberation fonts-liberation2
+)
+
+# ========== PAQUETS GRAPHIQUES (CORRECTION LAG) ==========
+PACKAGES_GRAPHICS=(
+    # Librairies Wayland
+    libwayland-client0 libwayland-cursor0 libwayland-egl1 libwayland-server0
+    
+    # Mesa et OpenGL
+    libegl1-mesa libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx
+    libgles2-mesa libglx-mesa0 mesa-utils mesa-vulkan-drivers
+    mesa-va-drivers mesa-vdpau-drivers
+    
+    # DRM et GBM
+    libdrm2 libdrm-amdgpu1 libdrm-intel1 libdrm-nouveau2 libdrm-radeon1
+    libgbm1
+    
+    # Accélération vidéo
+    va-driver-all vdpau-driver-all libva2 libvdpau1 vainfo
+    
+    # Vulkan
+    libvulkan1 vulkan-tools
+    
+    # GTK/Qt Wayland
+    libgtk-3-0 libgtk-4-1 qt5-wayland qt6-wayland
+    
+    # Codecs
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+    gstreamer1.0-libav gstreamer1.0-vaapi
+    
+    # Support supplémentaire
+    libfreetype6 libfontconfig1 libdbus-glib-1-2 libxt6
+)
+
+# Drivers Intel
+PACKAGES_INTEL=(
+    intel-media-va-driver i965-va-driver libva-glx2
+)
+
+# Installation par groupes
+msg "Installation des paquets Sway de base..."
+sudo apt-get install -y "${PACKAGES_CORE[@]}" || warn "Certains paquets core n'ont pas pu être installés"
+
+msg "Installation des composants Sway..."
+sudo apt-get install -y "${PACKAGES_SWAY[@]}" || warn "Certains paquets Sway n'ont pas pu être installés"
+
+msg "Installation de l'interface utilisateur..."
+sudo apt-get install -y "${PACKAGES_UI[@]}" || warn "Certains paquets UI n'ont pas pu être installés"
+
+msg "Installation du support audio..."
+sudo apt-get install -y "${PACKAGES_AUDIO[@]}" || warn "Certains paquets audio n'ont pas pu être installés"
+
+msg "Installation des utilitaires..."
+sudo apt-get install -y "${PACKAGES_UTILITIES[@]}" || warn "Certains paquets utilitaires n'ont pas pu être installés"
+
+msg "Installation des outils de build..."
+sudo apt-get install -y "${PACKAGES_BUILD[@]}" || warn "Certains paquets build n'ont pas pu être installés"
+
+msg "Installation des polices..."
+sudo apt-get install -y "${PACKAGES_FONTS[@]}" || warn "Certaines polices n'ont pas pu être installées"
+
+msg "Installation des paquets graphiques (correction lag)..."
+sudo apt-get install -y "${PACKAGES_GRAPHICS[@]}" || warn "Certains paquets graphiques n'ont pas pu être installés"
+
+# Navigateur
+msg "Installation du navigateur..."
+sudo apt-get install -y firefox-esr 2>/dev/null || sudo apt-get install -y firefox 2>/dev/null || warn "Firefox non disponible"
+
+# Détection GPU et installation drivers spécifiques
+GPU_INFO=$(lspci | grep -i 'vga\|3d\|display')
+msg "GPU détecté: $GPU_INFO"
+
+if echo "$GPU_INFO" | grep -iq "intel"; then
+    msg "Installation des drivers Intel..."
+    sudo apt-get install -y "${PACKAGES_INTEL[@]}" || warn "Certains drivers Intel n'ont pas pu être installés"
+    success "Drivers Intel installés"
+fi
+
+if echo "$GPU_INFO" | grep -iq "nvidia"; then
+    warn "GPU NVIDIA détecté - Installez manuellement: sudo apt install nvidia-driver"
+fi
+
+# Services
+sudo systemctl enable avahi-daemon acpid 2>/dev/null || true
+
+success "Installation des paquets terminée"
+
+# ============================================================================
+# PARTIE 2: CRÉATION DES RÉPERTOIRES ET SCRIPTS
+# ============================================================================
+section "PARTIE 2/4: Configuration des fichiers"
+
 msg "Création des répertoires..."
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$WAYBAR_DIR"
 mkdir -p "$ROFI_DIR"
 mkdir -p "$SCRIPTS_DIR"
 mkdir -p "$HOME/Screenshots"
+mkdir -p "$HOME/.config/environment.d"
+mkdir -p "$HOME/.local/share/applications"
+xdg-user-dirs-update
 success "Répertoires créés"
 
-# ===== SCRIPTS POUR WAYBAR =====
-msg "Création des scripts pour Waybar..."
+# ========== SCRIPTS WAYBAR ==========
+msg "Création des scripts Waybar..."
 
-# Script CPU avec icône
+# Script CPU
 cat > "$SCRIPTS_DIR/cpu.sh" << 'EOF'
 #!/bin/bash
 cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
@@ -55,7 +243,7 @@ printf " %.0f%%" "$cpu_usage"
 EOF
 chmod +x "$SCRIPTS_DIR/cpu.sh"
 
-# Script RAM avec icône
+# Script RAM
 cat > "$SCRIPTS_DIR/ram.sh" << 'EOF'
 #!/bin/bash
 mem_info=$(free -m | awk 'NR==2{printf " %.0f%%", $3*100/$2}')
@@ -63,7 +251,7 @@ echo "$mem_info"
 EOF
 chmod +x "$SCRIPTS_DIR/ram.sh"
 
-# Script IP avec icône
+# Script IP
 cat > "$SCRIPTS_DIR/ip.sh" << 'EOF'
 #!/bin/bash
 ip_addr=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -n1)
@@ -75,12 +263,10 @@ fi
 EOF
 chmod +x "$SCRIPTS_DIR/ip.sh"
 
-# Script changement de langue clavier
+# Script langue clavier
 cat > "$SCRIPTS_DIR/keyboard-layout.sh" << 'EOF'
 #!/bin/bash
-# Obtenir la disposition actuelle
 current=$(swaymsg -t get_inputs | jq -r '.[] | select(.type=="keyboard") | .xkb_active_layout_name' | head -n1)
-
 if [[ "$current" == *"French"* ]] || [[ "$current" == *"fr"* ]]; then
     echo " FR"
 elif [[ "$current" == *"English"* ]] || [[ "$current" == *"us"* ]]; then
@@ -91,12 +277,10 @@ fi
 EOF
 chmod +x "$SCRIPTS_DIR/keyboard-layout.sh"
 
-# Script pour changer la langue
+# Script toggle clavier
 cat > "$SCRIPTS_DIR/toggle-keyboard.sh" << 'EOF'
 #!/bin/bash
-# Basculer entre FR et US
 current=$(swaymsg -t get_inputs | jq -r '.[] | select(.type=="keyboard") | .xkb_active_layout_name' | head -n1)
-
 if [[ "$current" == *"French"* ]] || [[ "$current" == *"fr"* ]]; then
     swaymsg input type:keyboard xkb_layout us
     notify-send "Clavier" "Disposition: English (US)" -t 2000
@@ -107,7 +291,7 @@ fi
 EOF
 chmod +x "$SCRIPTS_DIR/toggle-keyboard.sh"
 
-# Script d'aide (raccourcis clavier)
+# Script aide
 cat > "$SCRIPTS_DIR/help.sh" << 'EOF'
 #!/bin/bash
 rofi -e "
@@ -152,17 +336,29 @@ MULTIMÉDIA
   XF86AudioMute         Muet
   XF86MonBrightnessUp   Luminosité +
   XF86MonBrightnessDown Luminosité -
+
+WAYBAR (INTERACTIONS)
+  Clic sur          Changer langue clavier
+  Clic sur        Muet/démuet
+  Scroll sur      Ajuster volume
+  Clic sur        Gérer WiFi
+  Clic droit sur  Scanner réseaux
 " -theme ~/.config/sway/rofi/theme.rasi
 EOF
 chmod +x "$SCRIPTS_DIR/help.sh"
 
 success "Scripts créés"
 
-# ===== CONFIGURATION SWAY =====
-msg "Création de la configuration Sway complète..."
+# ============================================================================
+# PARTIE 3: FICHIERS DE CONFIGURATION
+# ============================================================================
+section "PARTIE 3/4: Création des configurations"
+
+# ========== CONFIGURATION SWAY ==========
+msg "Création de la configuration Sway..."
 
 cat > "$CONFIG_DIR/config" << 'EOF'
-# Configuration Sway ultra-personnalisée
+# Configuration Sway complète
 
 ### Variables
 set $mod Mod4
@@ -209,10 +405,10 @@ bindsym $mod+Shift+e exec swaynag -t warning -m 'Quitter Sway?' -B 'Oui' 'swayms
 bindsym $mod+x exec swaylock -f -c 000000
 floating_modifier $mod normal
 
-# NOUVEAU: Aide (Super+1)
+# Aide (Super+1)
 bindsym $mod+1 exec $config_dir/scripts/help.sh
 
-# NOUVEAU: Thunar (Super+E)
+# Thunar (Super+E)
 bindsym $mod+e exec thunar
 
 ### Navigation
@@ -235,7 +431,7 @@ bindsym $mod+Shift+Down move down
 bindsym $mod+Shift+Up move up
 bindsym $mod+Shift+Right move right
 
-### Espaces de travail (2 par défaut, extensible)
+### Espaces de travail (clavier français)
 bindsym $mod+ampersand workspace number 1
 bindsym $mod+eacute workspace number 2
 bindsym $mod+quotedbl workspace number 3
@@ -288,10 +484,10 @@ bindsym Print exec grim ~/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png && notify-s
 bindsym $mod+Print exec grim -g "$(slurp)" ~/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png && notify-send "Capture zone" "Image enregistrée" -t 2000
 bindsym Shift+Print exec grim -g "$(slurp)" - | wl-copy && notify-send "Capture zone" "Copié dans presse-papier" -t 2000
 
-### Contrôles multimédia et volume
-bindsym XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5% && notify-send "Volume" "$(pactl get-sink-volume @DEFAULT_SINK@ | grep -Po '\d+(?=%)' | head -n1)%" -t 1000
-bindsym XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5% && notify-send "Volume" "$(pactl get-sink-volume @DEFAULT_SINK@ | grep -Po '\d+(?=%)' | head -n1)%" -t 1000
-bindsym XF86AudioMute exec pactl set-sink-mute @DEFAULT_SINK@ toggle && notify-send "Volume" "Muet basculé" -t 1000
+### Contrôles multimédia
+bindsym XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5% && notify-send -t 1000 "Volume" "$(pactl get-sink-volume @DEFAULT_SINK@ | grep -Po '\d+(?=%)' | head -n1)%"
+bindsym XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5% && notify-send -t 1000 "Volume" "$(pactl get-sink-volume @DEFAULT_SINK@ | grep -Po '\d+(?=%)' | head -n1)%"
+bindsym XF86AudioMute exec pactl set-sink-mute @DEFAULT_SINK@ toggle && notify-send -t 1000 "Volume" "Muet basculé"
 bindsym XF86MonBrightnessUp exec brightnessctl set +5%
 bindsym XF86MonBrightnessDown exec brightnessctl set 5%-
 bindsym XF86AudioPlay exec playerctl play-pause
@@ -304,6 +500,7 @@ default_border pixel 2
 default_floating_border pixel 2
 gaps inner 10
 gaps outer 5
+seat * xcursor_theme default 24
 
 # Couleurs
 set $bg #00141d
@@ -324,20 +521,22 @@ exec mako
 exec nm-applet --indicator
 exec wl-paste --watch cliphist store
 
-# Import des variables d'environnement
-exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK
-exec dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK
+# Import variables d'environnement
+exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK MOZ_ENABLE_WAYLAND QT_QPA_PLATFORM GDK_BACKEND
+exec dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK MOZ_ENABLE_WAYLAND QT_QPA_PLATFORM GDK_BACKEND
 
-### Règles pour fenêtres flottantes
+### Fenêtres flottantes
 for_window [app_id="pavucontrol"] floating enable
 for_window [app_id="nm-connection-editor"] floating enable
 for_window [title="Aide - Raccourcis"] floating enable
+for_window [app_id="mpv"] floating enable
+for_window [app_id="eog"] floating enable
 EOF
 
 success "Configuration Sway créée"
 
-# ===== CONFIGURATION WAYBAR COMPLÈTE =====
-msg "Configuration de Waybar avec tous les modules..."
+# ========== CONFIGURATION WAYBAR ==========
+msg "Création de la configuration Waybar..."
 
 cat > "$WAYBAR_DIR/config" << 'EOF'
 {
@@ -468,11 +667,6 @@ cat > "$WAYBAR_DIR/config" << 'EOF'
 }
 EOF
 
-success "Configuration Waybar créée"
-
-# ===== STYLE WAYBAR =====
-msg "Création du style Waybar..."
-
 cat > "$WAYBAR_DIR/style.css" << 'EOF'
 * {
     border: none;
@@ -485,16 +679,6 @@ cat > "$WAYBAR_DIR/style.css" << 'EOF'
 window#waybar {
     background-color: #00141d;
     color: #ffffff;
-    transition-property: background-color;
-    transition-duration: 0.5s;
-}
-
-window#waybar.hidden {
-    opacity: 0.2;
-}
-
-#workspaces {
-    margin: 0 5px;
 }
 
 #workspaces button {
@@ -516,15 +700,6 @@ window#waybar.hidden {
     color: #00141d;
     border-bottom: 2px solid #b3e5fc;
     font-weight: bold;
-}
-
-#workspaces button.urgent {
-    background-color: #eb4d4b;
-    animation: blink 1s linear infinite;
-}
-
-@keyframes blink {
-    50% { opacity: 0.5; }
 }
 
 #mode {
@@ -549,11 +724,21 @@ window#waybar.hidden {
     font-size: 14px;
 }
 
-#custom-keyboard {
+#custom-keyboard,
+#custom-cpu,
+#custom-ram,
+#custom-ip,
+#pulseaudio,
+#network,
+#battery,
+#tray {
     padding: 0 10px;
     margin: 0 3px;
     background-color: #1a1a1a;
     border-radius: 5px;
+}
+
+#custom-keyboard {
     color: #b3e5fc;
     font-weight: bold;
 }
@@ -564,35 +749,11 @@ window#waybar.hidden {
     cursor: pointer;
 }
 
-#custom-cpu {
-    padding: 0 10px;
-    margin: 0 3px;
-    background-color: #1a1a1a;
-    border-radius: 5px;
-    color: #4fc3f7;
-}
-
-#custom-ram {
-    padding: 0 10px;
-    margin: 0 3px;
-    background-color: #1a1a1a;
-    border-radius: 5px;
-    color: #80bfff;
-}
-
-#custom-ip {
-    padding: 0 10px;
-    margin: 0 3px;
-    background-color: #1a1a1a;
-    border-radius: 5px;
-    color: #b3e5fc;
-}
+#custom-cpu { color: #4fc3f7; }
+#custom-ram { color: #80bfff; }
+#custom-ip { color: #b3e5fc; }
 
 #pulseaudio {
-    padding: 0 10px;
-    margin: 0 3px;
-    background-color: #1a1a1a;
-    border-radius: 5px;
     color: #4fc3f7;
 }
 
@@ -607,10 +768,6 @@ window#waybar.hidden {
 }
 
 #network {
-    padding: 0 10px;
-    margin: 0 3px;
-    background-color: #1a1a1a;
-    border-radius: 5px;
     color: #b3e5fc;
 }
 
@@ -625,10 +782,6 @@ window#waybar.hidden {
 }
 
 #battery {
-    padding: 0 10px;
-    margin: 0 3px;
-    background-color: #1a1a1a;
-    border-radius: 5px;
     color: #b3e5fc;
 }
 
@@ -646,19 +799,8 @@ window#waybar.hidden {
     animation: blink 1s linear infinite;
 }
 
-#tray {
-    padding: 0 5px;
-    background-color: #1a1a1a;
-    border-radius: 5px;
-}
-
-#tray > .passive {
-    -gtk-icon-effect: dim;
-}
-
-#tray > .needs-attention {
-    -gtk-icon-effect: highlight;
-    background-color: #eb4d4b;
+@keyframes blink {
+    50% { opacity: 0.5; }
 }
 
 tooltip {
@@ -666,16 +808,12 @@ tooltip {
     border: 2px solid #4fc3f7;
     border-radius: 5px;
 }
-
-tooltip label {
-    color: #ffffff;
-}
 EOF
 
-success "Style Waybar créé"
+success "Configuration Waybar créée"
 
-# ===== CONFIGURATION ROFI =====
-msg "Configuration de Rofi..."
+# ========== CONFIGURATION ROFI ==========
+msg "Création de la configuration Rofi..."
 
 cat > "$ROFI_DIR/config.rasi" << 'EOF'
 configuration {
@@ -782,117 +920,134 @@ EOF
 
 success "Configuration Rofi créée"
 
-# ===== VÉRIFICATION DES DÉPENDANCES =====
-msg "Vérification des dépendances..."
+# ============================================================================
+# PARTIE 4: VARIABLES D'ENVIRONNEMENT (CORRECTION LAG)
+# ============================================================================
+section "PARTIE 4/4: Configuration environnement (correction lag)"
 
-MISSING_DEPS=()
-REQUIRED_PACKAGES=(
-    "foot" 
-    "grim" 
-    "slurp" 
-    "wl-clipboard:wl-copy"
-    "pulseaudio-utils:pactl"
-    "brightnessctl"
-    "mako"
-    "cliphist"
-    "rofi"
-    "thunar"
-    "network-manager"
-    "pavucontrol"
-    "jq"
-    "playerctl"
-    "nm-applet:nm-applet"
-    "swaylock"
-)
+msg "Configuration des variables d'environnement..."
 
-for pkg in "${REQUIRED_PACKAGES[@]}"; do
-    cmd="${pkg##*:}"
-    [ "$cmd" = "$pkg" ] && pkg_name="$pkg" || pkg_name="${pkg%%:*}"
-    
-    if ! command -v "$cmd" &> /dev/null; then
-        MISSING_DEPS+=("$pkg_name")
-    fi
-done
+cat > "$HOME/.config/environment.d/sway-wayland.conf" << 'EOF'
+# Variables pour Wayland et correction lag navigateur
 
-if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-    warn "Dépendances manquantes: ${MISSING_DEPS[*]}"
-    read -p "Installer les dépendances manquantes? (o/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[OoYy]$ ]]; then
-        msg "Installation des dépendances..."
-        sudo apt-get update
-        sudo apt-get install -y "${MISSING_DEPS[@]}"
-        success "Dépendances installées"
-    fi
-else
-    success "Toutes les dépendances sont présentes"
-fi
+# Force Wayland pour les applications
+MOZ_ENABLE_WAYLAND=1
+QT_QPA_PLATFORM=wayland
+GDK_BACKEND=wayland
+CLUTTER_BACKEND=wayland
+SDL_VIDEODRIVER=wayland
 
-# ===== RÉSUMÉ FINAL =====
+# Accélération matérielle
+WLR_RENDERER=vulkan
+WLR_NO_HARDWARE_CURSORS=0
+
+# Support GBM
+GBM_BACKEND=mesa
+
+# Mesa
+MESA_LOADER_DRIVER_OVERRIDE=iris
+EOF
+
+success "Variables d'environnement configurées"
+
+# Firefox Wayland
+msg "Configuration de Firefox pour Wayland..."
+
+cat > "$HOME/.local/share/applications/firefox-wayland.desktop" << 'EOF'
+[Desktop Entry]
+Name=Firefox (Wayland)
+GenericName=Web Browser
+Comment=Browse the World Wide Web
+Exec=env MOZ_ENABLE_WAYLAND=1 firefox %u
+Icon=firefox
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+Categories=Network;WebBrowser;
+Keywords=web;browser;internet;
+EOF
+
+success "Firefox configuré pour Wayland"
+
+# ============================================================================
+# RÉSUMÉ FINAL
+# ============================================================================
+
 clear
 echo -e "${GREEN}"
-echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║       Configuration ULTRA-COMPLÈTE terminée avec succès! ✓    ║"
-echo "╚════════════════════════════════════════════════════════════════╝"
+cat << 'EOF'
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║           ✓ INSTALLATION COMPLÈTE TERMINÉE AVEC SUCCÈS           ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+EOF
 echo -e "${NC}\n"
 
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}FONCTIONNALITÉS CONFIGURÉES${NC}"
+echo -e "${GREEN}INSTALLATION RÉUSSIE${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo
-echo -e "${CYAN}Waybar (barre supérieure)${NC}"
-echo "  ✓ Module CPU avec icône "
-echo "  ✓ Module RAM avec icône "
-echo "  ✓ Module IP avec icône "
-echo "  ✓ Module WiFi/Réseau avec icône  (clic pour gérer)"
-echo "  ✓ Module Son avec icône  (clic pour muet, scroll pour volume)"
-echo "  ✓ Module Batterie avec icône "
-echo "  ✓ Module Langue clavier  FR/EN (clic pour changer)"
-echo "  ✓ Horloge complète avec calendrier "
-echo "  ✓ 2 bureaux configurés par défaut"
+echo -e "${GREEN}✓${NC} Sway installé et configuré"
+echo -e "${GREEN}✓${NC} Waybar avec CPU, RAM, IP, WiFi, Son, Batterie, Langue"
+echo -e "${GREEN}✓${NC} Rofi configuré avec thème"
+echo -e "${GREEN}✓${NC} Drivers graphiques installés (correction lag)"
+echo -e "${GREEN}✓${NC} Résolution 1920x1080 configurée"
+echo -e "${GREEN}✓${NC} Raccourcis clavier avec aide (Super+1)"
+echo -e "${GREEN}✓${NC} Variables d'environnement Wayland"
 echo
-echo -e "${CYAN}Applications et raccourcis${NC}"
-echo "  ✓ Rofi pour lancer les applications"
-echo "  ✓ Aide complète des raccourcis (Super+1)"
-echo "  ✓ Thunar (gestionnaire de fichiers) Super+E"
-echo "  ✓ Notifications avec mako"
-echo "  ✓ Captures d'écran configurées"
-echo
+
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${YELLOW}RACCOURCIS CLAVIER ESSENTIELS${NC}"
+echo -e "${YELLOW}PROCHAINES ÉTAPES${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo
-echo -e "${GREEN}Applications${NC}"
-echo "  Super + Espace       Rofi (lancer applications)"
-echo "  Super + Entrée       Terminal"
-echo "  Super + E            Thunar (fichiers)"
-echo "  Super + 1            Aide complète"
+echo -e "${YELLOW}1.${NC} ${GREEN}Se déconnecter${NC} de votre session actuelle"
+echo -e "${YELLOW}2.${NC} ${GREEN}Sélectionner 'Sway'${NC} dans le menu de session (SDDM/GDM/LightDM)"
+echo -e "${YELLOW}3.${NC} ${GREEN}Se connecter${NC}"
+echo -e "${YELLOW}4.${NC} ${GREEN}Tester${NC} : Appuyer sur ${CYAN}Super + 1${NC} pour voir l'aide complète"
 echo
-echo -e "${GREEN}Gestion fenêtres${NC}"
-echo "  Super + Q            Fermer fenêtre"
-echo "  Super + F            Plein écran"
-echo "  Super + H/J/K/L      Naviguer"
-echo
-echo -e "${GREEN}Système${NC}"
-echo "  Super + Shift + R    Recharger config"
-echo "  Super + Shift + E    Quitter Sway"
-echo "  Super + X            Verrouiller"
-echo "  Print                Screenshot"
-echo
-echo -e "${GREEN}Waybar (interactions)${NC}"
-echo "  Clic sur           Changer langue clavier"
-echo "  Clic sur         Muet/démuet"
-echo "  Scroll sur       Ajuster volume"
-echo "  Clic sur         Gérer WiFi"
-echo "  Clic droit sur   Scanner réseaux"
-echo
+
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}POUR APPLIQUER LES CHANGEMENTS${NC}"
+echo -e "${YELLOW}RACCOURCIS ESSENTIELS${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo
-echo "  1. Si vous êtes dans Sway: Super + Shift + R"
-echo "  2. Sinon: Se déconnecter et se reconnecter"
-echo "  3. Tester: Super + 1 pour l'aide complète"
+echo -e "  ${CYAN}Super + 1${NC}          Aide complète des raccourcis"
+echo -e "  ${CYAN}Super + Espace${NC}     Rofi (lancer applications)"
+echo -e "  ${CYAN}Super + Entrée${NC}     Terminal"
+echo -e "  ${CYAN}Super + E${NC}          Thunar (fichiers)"
+echo -e "  ${CYAN}Super + Q${NC}          Fermer fenêtre"
+echo -e "  ${CYAN}Super + Shift + R${NC}  Recharger configuration"
 echo
-echo -e "${GREEN}Configuration terminée avec succès! 🎉${NC}"
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${YELLOW}WAYBAR - MODULES INTERACTIFS${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo
+echo -e "  ${CYAN}${NC}  CPU          Consommation processeur"
+echo -e "  ${CYAN}${NC}  RAM          Mémoire utilisée"
+echo -e "  ${CYAN}${NC}  IP           Adresse IP locale"
+echo -e "  ${CYAN}${NC}  WiFi         Signal + clic pour gérer"
+echo -e "  ${CYAN}${NC}  Son          Volume (clic=muet, scroll=ajuster)"
+echo -e "  ${CYAN}${NC}  Batterie     Niveau batterie"
+echo -e "  ${CYAN} FR/EN${NC}       Langue (clic pour changer)"
+echo
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${YELLOW}VÉRIFICATION POST-INSTALLATION${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo
+echo "Une fois dans Sway, vérifier l'accélération matérielle:"
+echo -e "  ${CYAN}\$${NC} glxinfo | grep 'direct rendering'  ${GREEN}# Doit afficher 'Yes'${NC}"
+echo -e "  ${CYAN}\$${NC} echo \$MOZ_ENABLE_WAYLAND           ${GREEN}# Doit afficher '1'${NC}"
+echo
+echo "Dans Firefox (about:support):"
+echo -e "  Chercher ${GREEN}'Compositing'${NC} → doit afficher ${GREEN}'WebRender'${NC}"
+echo
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}Log d'installation sauvegardé:${NC} $LOG_FILE"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo
+echo -e "${GREEN}🎉 Profitez de votre nouvel environnement Sway! 🎉${NC}"
 echo

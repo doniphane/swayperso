@@ -29,10 +29,12 @@ error() { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
 section() { echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"; echo -e "${BLUE}║ $*${NC}"; echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n"; }
 
 # Vérifier qu'on n'est pas root
-[ "$EUID" -eq 0 ] && error "Ne pas exécuter ce script en root!"
+if [ "$EUID" -eq 0 ]; then
+    error "Ne pas exécuter ce script en root!"
+fi
 
 # Chemins
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$HOME"
 CONFIG_DIR="$HOME/.config/sway"
 WAYBAR_DIR="$CONFIG_DIR/waybar"
 ROFI_DIR="$CONFIG_DIR/rofi"
@@ -41,7 +43,7 @@ TEMP_DIR="/tmp/sway_install_$$"
 LOG_FILE="$HOME/sway-complete-install.log"
 
 # Logging
-exec > >(tee -a "$LOG_FILE") 2>&1
+# exec > >(tee -a "$LOG_FILE") 2>&1
 trap "rm -rf $TEMP_DIR" EXIT
 
 # Banner principal
